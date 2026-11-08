@@ -1,0 +1,52 @@
+# Audilekt-Konfiguration
+#
+# Jeder Wert lässt sich per Umgebungsvariable überschreiben:
+# Schlüssel in Großbuchstaben mit Präfix TTS_, zum Beispiel port -> TTS_PORT.
+# Relative Pfade beziehen sich auf das Projektverzeichnis.
+
+# Web-Dienst
+title = "Audilekt"
+host = "0.0.0.0"
+port = 8090
+data_dir = "data"
+voices_dir = "voices"
+max_upload_mb = 50
+keep_days = 30                # fertige MP3s nach so vielen Tagen löschen
+
+# Modell
+model = "./drama-3"           # lokaler Ordner oder Hugging-Face-Repo-ID
+backend_url = "http://127.0.0.1:8010"
+autostart = true              # Drama 3 beim ersten Auftrag selbst starten
+idle_stop_sec = 600           # und nach so viel Leerlauf beenden, 0 = nie
+start_timeout_sec = 1200
+backend_args = ""             # weitere Flags für sgl-omni serve
+
+# Grafikspeicher, ausgelegt auf 96 GB VRAM
+engine_mem = 0.75             # Anteil des VRAM für die Engine
+max_running = 64              # parallele Requests im Backend
+min_free_gib = 85.0           # so viel VRAM muss frei sein, bevor das Modell startet
+
+# Synthese
+concurrency = 32              # parallele Abschnitte, höher = mehr GPU-Last
+chunk_bytes = 280             # Länge eines Abschnitts in UTF-8-Bytes
+max_draws = 3                 # Versuche je Abschnitt bei Stille oder Endlosschleife
+cps = 14.5                    # Zeichen pro Sekunde für die Längenschätzung
+request_timeout_sec = 900
+
+# Sampling: auskommentiert gelten die Server-Defaults (temperature 1.0, top_p 0.9).
+# top_k besser nicht setzen: Laut SGLang-Omni lässt 30 die Stimme nach der ersten Phrase verstummen.
+# temperature = 1.0
+# top_p = 0.9
+# top_k = 0
+
+# Text
+read_tables = true            # DOCX-Tabellen zeilenweise vorlesen
+allow_tags = false            # true = [whisper] usw. an das Modell durchreichen
+gap_sentence_ms = 250
+gap_paragraph_ms = 650
+gap_heading_ms = 900
+
+# Audio
+mp3_bitrate = "128k"
+loudnorm = true
+# ffmpeg = "/usr/bin/ffmpeg"
