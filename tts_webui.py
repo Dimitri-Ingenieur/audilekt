@@ -8,7 +8,6 @@ Einstellungen stehen in config.toml, jede lässt sich per TTS_*-Umgebungsvariabl
 from __future__ import annotations
 
 import atexit
-import html
 import http.client
 import json
 import math
@@ -36,7 +35,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
-from flask import Flask, abort, jsonify, request, send_file
+from flask import Flask, abort, jsonify, render_template, request, send_file
 
 
 # ---------------------------------------------------------------- CONFIG
@@ -863,8 +862,9 @@ def load_jobs():
 
 
 # ---------------------------------------------------------------- Web
-app = Flask(__name__)
+app = Flask(__name__, template_folder=str(BASE / "templates"))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+app.config["TEMPLATES_AUTO_RELOAD"] = True               # Änderungen am Template ohne Neustart
 
 
 def _problem(message, code):
@@ -878,7 +878,8 @@ def _too_large(_):
 
 @app.get("/")
 def index():
-    return PAGE, 200, {"Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store"}
+    page = render_template("index.html", title=TITLE, max_upload_mb=MAX_UPLOAD_MB, keep_days=KEEP_DAYS)
+    return page, 200, {"Cache-Control": "no-store"}
 
 
 @app.get("/api/state")
@@ -964,187 +965,6 @@ def download(job_id):
         abort(404)
     return send_file(path, mimetype="audio/mpeg", as_attachment="dl" in request.args,
                      download_name=job.mp3_name, conditional=True, max_age=0)
-
-
-PAGE = r"""<!doctype html>
-<html lang="de">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#F5A524" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#47250A" media="(prefers-color-scheme: dark)">
-<title>%TITLE%</title>
-<style>
-:root{
-  --field:#F5A524;--ink:#1B1003;--stripe:#1B1003;--wait:rgba(27,16,3,.2);--now:rgba(27,16,3,.5);
-  --flag:#FFF8E8;--alarm:#6E1205;--slab:#1B1003;--on-slab:#FFC861;
-  --cond:"DIN Condensed","Bahnschrift Condensed","Bahnschrift","Avenir Next Condensed",sans-serif-condensed,"Roboto Condensed","Liberation Sans Narrow","Arial Narrow",sans-serif;
-  --text:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Liberation Sans",sans-serif;
-  color-scheme:light;
-}
-@media (prefers-color-scheme:dark){
-  :root{--field:#47250A;--ink:#FFE9C7;--stripe:#F5A524;--wait:rgba(245,165,36,.2);--now:rgba(245,165,36,.5);
-    --flag:#FFFFFF;--alarm:#FFC2B0;--slab:#F5A524;--on-slab:#1B1003;color-scheme:dark}
-}
-*,*::before,*::after{box-sizing:border-box}
-[hidden]{display:none!important}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--field);color:var(--ink);font:400 1.0625rem/1.5 var(--text)}
-main{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"head" "add" "jobs" "gpu";
-  max-width:40rem;margin:0 auto;
-  padding:max(1.5rem,env(safe-area-inset-top)) max(1.25rem,env(safe-area-inset-right)) max(2rem,env(safe-area-inset-bottom)) max(1.25rem,env(safe-area-inset-left))}
-h1{grid-area:head;margin:0 0 1.25rem;font:700 clamp(4rem,21vw,7rem)/.84 var(--cond);letter-spacing:-.012em;text-wrap:balance}
-#add{grid-area:add}
-#voiceRow{display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem}
-select{flex:1;min-height:3rem;padding:0 .75rem;font:inherit;color:inherit;background:transparent;border:2px solid var(--ink);border-radius:3px}
-#file{position:absolute;width:1px;height:1px;opacity:0}
-#pick{display:flex;align-items:center;justify-content:center;min-height:5rem;padding:.75rem 1rem;background:var(--slab);color:var(--on-slab);font:700 2.1rem/1 var(--cond);border-radius:3px;cursor:pointer;text-align:center}
-#file:focus-visible+#pick,button:focus-visible,a:focus-visible,summary:focus-visible,select:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
-#pick.over{outline:4px dashed var(--ink);outline-offset:4px}
-#file:disabled+#pick{opacity:.7;cursor:progress}
-#hint{margin:.6rem 0 0}
-#err{margin:.6rem 0 0;font-weight:600;color:var(--alarm)}
-#jobs{grid-area:jobs;margin-top:2.25rem}
-#empty{margin:0}
-.job{padding-bottom:2.25rem}
-.job h2{margin:0;font:700 1.75rem/1.08 var(--cond);overflow-wrap:anywhere}
-.state{margin:.3rem 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
-.job[data-status=failed] .state{color:var(--alarm);font-weight:600}
-canvas{display:block;width:100%;height:5.5rem;margin-top:.9rem}
-audio{display:block;width:100%;margin-top:.9rem}
-details{margin-top:.6rem}
-summary{cursor:pointer;font-weight:600;min-height:2.75rem;display:flex;align-items:center}
-details ol{margin:.25rem 0 0;padding-left:1.4rem}
-details li{margin-bottom:.5rem;overflow-wrap:anywhere}
-.actions{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1.5rem;margin-top:.6rem}
-.actions a,.actions button{display:inline-flex;align-items:center;min-height:2.75rem;padding:0;background:none;border:0;color:inherit;font:600 1.0625rem/1 var(--text);text-decoration:underline;text-underline-offset:.2em;cursor:pointer}
-.actions a.save{padding:0 1.1rem;background:var(--slab);color:var(--on-slab);border-radius:3px;text-decoration:none}
-#gpu{grid-area:gpu;margin:0;font-size:.95rem}
-@media (min-width:62rem){
-  main{max-width:74rem;column-gap:5rem;grid-template-columns:minmax(20rem,26rem) minmax(0,1fr);grid-template-rows:auto auto 1fr;grid-template-areas:"head jobs" "add jobs" "gpu jobs";padding-top:3rem}
-  h1{font-size:6rem}
-  #jobs{margin-top:.5rem}
-  #gpu{margin-top:1.5rem}
-}
-</style>
-</head>
-<body>
-<main>
-  <h1>%TITLE%</h1>
-  <section id="add">
-    <label id="voiceRow" hidden>Stimme <select id="voice"></select></label>
-    <input id="file" type="file" multiple accept=".docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-    <label id="pick" for="file">Dokument wählen</label>
-    <p id="hint">DOCX oder TXT bis %MAX_MB% MB. Fertige MP3s bleiben %KEEP% Tage.</p>
-    <p id="err" role="alert" hidden></p>
-  </section>
-  <section id="jobs" aria-label="Aufträge">
-    <p id="empty" hidden>Noch keine Aufträge. Wähle ein Dokument, dann erscheint es hier.</p>
-    <div id="list"></div>
-  </section>
-  <p id="gpu"></p>
-</main>
-<script>
-const $=s=>document.querySelector(s), ACTIVE=new Set(['queued','preparing','waiting_gpu','starting','running','encoding']);
-const items=new Map(), list=$('#list'), fileInput=$('#file'), pick=$('#pick'), err=$('#err');
-let timer, anyActive=false;
-
-const num=(v,d=1)=>v.toFixed(d).replace('.',',');
-function span(s){s=Math.max(1,Math.round(s));if(s<60)return s+' Sek.';
-  const h=Math.floor(s/3600),m=Math.round(s%3600/60);return h?`${h} Std. ${m} Min.`:`${m} Min.`}
-const plural=(n,one,many)=>n===1?`1 ${one}`:`${n} ${many}`;
-function say(j){switch(j.status){
-  case'queued':return'Wartet, bis die Aufträge davor fertig sind.';
-  case'preparing':return'Text wird vorbereitet.';
-  case'waiting_gpu':return`Wartet auf freien Grafikspeicher: ${j.detail}.`;
-  case'starting':return'Sprachmodell wird geladen. Das dauert einige Minuten.';
-  case'running':return`${j.done} von ${plural(j.total,'Abschnitt','Abschnitten')} fertig`+(j.eta!=null?`, noch etwa ${span(j.eta)}`:'.');
-  case'encoding':return'MP3 wird geschrieben.';
-  case'done':return`${span(j.audio_sec)} Audio`+(j.factor?`, ${num(j.factor)}× schneller als Echtzeit erzeugt.`:'.');
-  case'cancelled':return j.total?`Abgebrochen bei ${j.done} von ${plural(j.total,'Abschnitt','Abschnitten')}.`:'Abgebrochen.';
-  case'failed':return j.error;
-  default:return j.status}}
-
-function colors(){const c=getComputedStyle(document.documentElement),g=n=>c.getPropertyValue(n).trim();
-  return{'0':g('--wait'),'1':g('--now'),'2':g('--stripe'),'3':g('--flag')}}
-function stripes(cv,j){
-  const r=window.devicePixelRatio||1,W=Math.round(cv.clientWidth*r),H=Math.round(cv.clientHeight*r);
-  if(!W||!H)return;if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}
-  const x=cv.getContext('2d'),n=j.states.length,step=W/n,gap=step>=4*r?Math.max(r,step*.3):0,pal=colors();
-  x.clearRect(0,0,W,H);
-  for(const kind of '0123'){x.fillStyle=pal[kind];
-    for(let i=0;i<n;i++){if(j.states[i]!==kind)continue;
-      const h=Math.round(H*(.3+.7*(+j.heights[i])/9)),l=Math.floor(i*step);
-      x.fillRect(l,Math.round((H-h)/2),Math.max(1,Math.ceil(step-gap)),h)}}
-}
-
-async function act(url,method='POST'){await fetch(url,{method});await refresh()}
-function button(label,fn){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=fn;return b}
-function buildActions(e,j){
-  const a=e.actions;a.replaceChildren();
-  if(ACTIVE.has(j.status))a.append(button('Abbrechen',()=>act(`/api/jobs/${j.id}/cancel`)));
-  if(j.status==='done'){const s=document.createElement('a');s.className='save';s.href=`/files/${j.id}?dl=1`;
-    s.download=j.download_name;s.textContent='MP3 laden';a.append(s)}
-  if(j.status==='failed'||j.status==='cancelled')a.append(button('Fortsetzen',()=>act(`/api/jobs/${j.id}/retry`)));
-  if(!ACTIVE.has(j.status))a.append(button('Löschen',()=>{if(confirm(`${j.name} löschen?`))act(`/api/jobs/${j.id}`,'DELETE')}));
-}
-function buildWarnings(e,j){
-  const d=e.notes,n=j.warnings.length;d.hidden=!n;
-  if(+d.dataset.n===n)return;d.dataset.n=n;
-  e.summary.textContent=`${plural(n,'Abschnitt','Abschnitte')} unsicher, bitte anhören`;
-  e.noteList.replaceChildren(...j.warnings.map(w=>{const li=document.createElement('li');li.textContent=w.text;return li}));
-}
-function make(j){
-  const e=document.createElement('article');e.className='job';
-  e.innerHTML='<h2></h2><p class="state"></p><canvas hidden role="img"></canvas><div class="player"></div><details hidden><summary></summary><ol></ol></details><div class="actions"></div>';
-  e.querySelector('h2').textContent=j.name;
-  e.stateLine=e.querySelector('.state');e.cv=e.querySelector('canvas');e.player=e.querySelector('.player');
-  e.notes=e.querySelector('details');e.summary=e.querySelector('summary');e.noteList=e.querySelector('ol');e.actions=e.querySelector('.actions');
-  return e}
-function update(e,j){
-  e.job=j;e.stateLine.textContent=say(j);
-  const strip=!!j.states;e.cv.hidden=!strip;
-  if(strip){e.cv.setAttribute('aria-label',say(j));stripes(e.cv,j)}
-  if(e.dataset.status!==j.status){e.dataset.status=j.status;buildActions(e,j);
-    if(j.status==='done'&&!e.player.firstChild){const a=document.createElement('audio');a.controls=true;a.preload='none';a.src=`/files/${j.id}`;e.player.append(a)}}
-  buildWarnings(e,j)}
-function draw(s){
-  const sel=$('#voice'),key=s.voices.join('|');
-  if(sel.dataset.key!==key){sel.dataset.key=key;sel.replaceChildren(...s.voices.map(v=>{const o=document.createElement('option');o.textContent=v;return o}));$('#voiceRow').hidden=s.voices.length<2}
-  const seen=new Set(s.jobs.map(j=>j.id));
-  for(const[id,e]of items)if(!seen.has(id)){e.remove();items.delete(id)}
-  s.jobs.forEach((j,i)=>{let e=items.get(j.id);if(!e){e=make(j);items.set(j.id,e)}
-    if(list.children[i]!==e)list.insertBefore(e,list.children[i]||null);update(e,j)});
-  $('#empty').hidden=s.jobs.length>0;
-  anyActive=s.jobs.some(j=>ACTIVE.has(j.status));
-  const b=s.backend;let t={off:'Sprachmodell nicht geladen.',starting:'Sprachmodell wird geladen.',ready:'Sprachmodell geladen.'}[b.state];
-  if(b.total_gib)t+=` GPU ${b.util} %, Speicher ${Math.round(b.used_gib)} von ${Math.round(b.total_gib)} GB.`;
-  $('#gpu').textContent=t}
-function complain(m){err.textContent=m;err.hidden=!m}
-let offline=false;
-async function refresh(){try{const r=await fetch('/api/state',{cache:'no-store'});if(!r.ok)throw 0;draw(await r.json());if(offline){offline=false;complain('')}}
-  catch{offline=true;complain('Der Server antwortet nicht. Die Seite versucht es weiter.')}}
-function schedule(){clearTimeout(timer);timer=setTimeout(async()=>{await refresh();schedule()},document.hidden?15000:anyActive?1500:6000)}
-document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();schedule()}});
-addEventListener('resize',()=>{for(const e of items.values())if(e.job&&e.job.states)stripes(e.cv,e.job)});
-
-async function send(files){
-  if(!files.length)return;complain('');fileInput.disabled=true;const label=pick.textContent;pick.textContent='Wird hochgeladen …';
-  for(const f of files){const fd=new FormData();fd.append('file',f);if($('#voice').value)fd.append('voice',$('#voice').value);
-    try{const r=await fetch('/api/jobs',{method:'POST',body:fd});
-      if(!r.ok){const b=await r.json().catch(()=>({}));complain(b.error||`Upload von ${f.name} fehlgeschlagen.`)}}
-    catch{complain(`Upload von ${f.name} fehlgeschlagen. Ist der Server erreichbar?`)}
-    await refresh()}
-  fileInput.disabled=false;fileInput.value='';pick.textContent=label;schedule()}
-fileInput.addEventListener('change',()=>send([...fileInput.files]));
-for(const ev of['dragenter','dragover'])addEventListener(ev,e=>{e.preventDefault();pick.classList.add('over')});
-for(const ev of['dragleave','drop'])addEventListener(ev,e=>{e.preventDefault();if(ev==='drop'||!e.relatedTarget)pick.classList.remove('over')});
-addEventListener('drop',e=>send([...e.dataTransfer.files]));
-refresh().then(schedule);
-</script>
-</body>
-</html>
-""".replace("%TITLE%", html.escape(TITLE)).replace("%MAX_MB%", str(MAX_UPLOAD_MB)).replace("%KEEP%", str(KEEP_DAYS))
 
 
 def main():

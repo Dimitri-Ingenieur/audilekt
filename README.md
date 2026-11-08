@@ -47,6 +47,7 @@ Drama 3 gehört nicht zu diesem Repository und muss von Hugging Face geladen wer
 ```text
 audilekt/
 ├── tts_webui.py        Web-Dienst
+├── templates/          Weboberfläche
 ├── config.toml         Einstellungen
 ├── requirements.txt    Python-Pakete
 ├── drama-3/            Modell von Hugging Face (nicht im Repository)
