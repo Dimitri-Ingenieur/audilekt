@@ -131,18 +131,47 @@ function say(j){switch(j.status){
   case'failed':return j.error;
   default:return j.status}}
 
+// Fortschritt als Wellenform. Lange Dokumente: ein Balken je Abschnitt. Kurze Texte: mehrere Balken je Abschnitt,
+// sonst wäre ein einzelner Satz nur ein Block. Laufende Abschnitte schwingen, beim Warten zieht ein Licht darüber.
+const calm=matchMedia('(prefers-reduced-motion: reduce)');
 function colors(){const c=getComputedStyle(document.documentElement),g=n=>c.getPropertyValue(n).trim();
   return{'0':g('--wait'),'1':g('--now'),'2':g('--stripe'),'3':g('--flag')}}
-function stripes(cv,j){
-  const r=window.devicePixelRatio||1,W=Math.round(cv.clientWidth*r),H=Math.round(cv.clientHeight*r);
+function seeded(text){let s=0;for(const ch of text)s=Math.imul(31,s)+ch.charCodeAt(0)|0;
+  return()=>{s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function layout(j,W,r){
+  const n=j.states.length,room=Math.max(1,Math.floor(W/(7*r)));
+  if(n>=room){const step=W/n,gap=step>=4*r?Math.max(r,step*.3):0;
+    return[...j.heights].map((v,i)=>({c:i,k:i,x:Math.floor(i*step),w:Math.max(1,Math.ceil(step-gap)),h:.3+.7*v/9}))}
+  const weight=[...j.heights].map(Number),total=weight.reduce((a,b)=>a+b,0);
+  const count=weight.map(v=>Math.max(1,Math.round(room*v/total))),step=W/count.reduce((a,b)=>a+b,0);
+  const w=Math.max(r,Math.round(step*.6)),rand=seeded(j.id),bars=[];let k=0,level=.5;
+  count.forEach((m,c)=>{for(let i=0;i<m;i++,k++){level=.4*level+.6*rand();
+    const edge=m<5?1:Math.min(1,(i+1)/3,(m-i)/3);           // leiser an den Abschnittsgrenzen, wie Pausen
+    bars.push({c,k,x:Math.floor(k*step),w,h:.12+.88*level*(.35+.65*edge)})}});
+  return bars}
+function paint(e,now,pal){
+  const cv=e.cv,j=e.job,r=window.devicePixelRatio||1,W=Math.round(cv.clientWidth*r),H=Math.round(cv.clientHeight*r);
   if(!W||!H)return;if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}
-  const x=cv.getContext('2d'),n=j.states.length,step=W/n,gap=step>=4*r?Math.max(r,step*.3):0,pal=colors();
+  const key=W+'|'+j.heights;if(e.layoutKey!==key){e.layoutKey=key;e.bars=layout(j,W,r)}
+  const x=cv.getContext('2d'),t=now/1000,live=!calm.matches;
+  const span=b=>{let h=b.h;if(live&&j.states[b.c]==='1')h*=.4+.6*(.5+.5*Math.sin(t*7-b.k*.55));
+    const bh=Math.max(r,Math.round(H*h));return[Math.round((H-bh)/2),bh]};
   x.clearRect(0,0,W,H);
   for(const kind of '0123'){x.fillStyle=pal[kind];
-    for(let i=0;i<n;i++){if(j.states[i]!==kind)continue;
-      const h=Math.round(H*(.3+.7*(+j.heights[i])/9)),l=Math.floor(i*step);
-      x.fillRect(l,Math.round((H-h)/2),Math.max(1,Math.ceil(step-gap)),h)}}
+    for(const b of e.bars)if(j.states[b.c]===kind){const[y,bh]=span(b);x.fillRect(b.x,y,b.w,bh)}}
+  if(live&&j.status!=='running'){const at=(t/2.4%1)*1.4-.2;x.fillStyle=pal[j.status==='encoding'?'3':'1'];
+    for(const b of e.bars){const glow=1-Math.abs(b.x/W-at)/.12;
+      if(glow>0){const[y,bh]=span(b);x.globalAlpha=glow;x.fillRect(b.x,y,b.w,bh)}}
+    x.globalAlpha=1}
 }
+let frame=0,painted=0;
+function animate(now){frame=0;
+  const moving=[...items.values()].filter(e=>e.job&&e.job.states&&!e.cv.hidden);
+  if(!moving.length||document.hidden||calm.matches)return;
+  if(now-painted>=33){painted=now;const pal=colors();for(const e of moving)paint(e,now,pal)}
+  frame=requestAnimationFrame(animate)}
+const animateSoon=()=>{if(!frame)frame=requestAnimationFrame(animate)};
+calm.addEventListener('change',animateSoon);
 
 async function act(url,method='POST'){await fetch(url,{method});await refresh()}
 function button(label,fn){const b=document.createElement('button');b.type='button';b.textContent=label;b.onclick=fn;return b}
@@ -170,7 +199,7 @@ function make(j){
 function update(e,j){
   e.job=j;e.stateLine.textContent=say(j);
   const strip=!!j.states;e.cv.hidden=!strip;
-  if(strip){e.cv.setAttribute('aria-label',say(j));stripes(e.cv,j)}
+  if(strip){e.cv.setAttribute('aria-label',say(j));paint(e,performance.now(),colors())}
   if(e.dataset.status!==j.status){e.dataset.status=j.status;buildActions(e,j);
     if(j.status==='done'&&!e.player.firstChild){const a=document.createElement('audio');a.controls=true;a.preload='none';a.src=`/files/${j.id}`;e.player.append(a)}}
   buildWarnings(e,j)}
@@ -185,14 +214,14 @@ function draw(s){
   anyActive=s.jobs.some(j=>ACTIVE.has(j.status));
   const b=s.backend;let t={off:'Sprachmodell nicht geladen.',starting:'Sprachmodell wird geladen.',ready:'Sprachmodell geladen.'}[b.state];
   if(b.total_gib)t+=` GPU ${b.util} %, Speicher ${Math.round(b.used_gib)} von ${Math.round(b.total_gib)} GB.`;
-  $('#gpu').textContent=t}
+  $('#gpu').textContent=t;animateSoon()}
 function complain(m){err.textContent=m;err.hidden=!m}
 let offline=false;
 async function refresh(){try{const r=await fetch('/api/state',{cache:'no-store'});if(!r.ok)throw 0;draw(await r.json());if(offline){offline=false;complain('')}}
   catch{offline=true;complain('Der Server antwortet nicht. Die Seite versucht es weiter.')}}
 function schedule(){clearTimeout(timer);timer=setTimeout(async()=>{await refresh();schedule()},document.hidden?15000:anyActive?1500:6000)}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();schedule()}});
-addEventListener('resize',()=>{for(const e of items.values())if(e.job&&e.job.states)stripes(e.cv,e.job)});
+addEventListener('resize',()=>{const pal=colors();for(const e of items.values())if(e.job&&e.job.states)paint(e,performance.now(),pal)});
 
 // Eingabe: Text oder Dokumente. Erst „Audio erstellen“ legt die Aufträge an.
 function ready(){go.disabled=mode==='text'?!textInput.value.trim():!chosen.length}
