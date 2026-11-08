@@ -1,12 +1,12 @@
 # Audilekt
 
-Web-Dienst fürs Heimnetz: DOCX oder TXT hochladen, MP3 zurückbekommen. Die Sprachsynthese läuft lokal auf der eigenen GPU, die Oberfläche ist auch fürs Smartphone gemacht.
+Web-Dienst fürs Heimnetz: Text eingeben oder DOCX/TXT hochladen, MP3 zurückbekommen. Die Sprachsynthese läuft lokal auf der eigenen GPU, die Oberfläche ist auch fürs Smartphone gemacht.
 
 **Built with Fish Audio.** Audilekt basiert auf [Fish Audio Drama 3](https://huggingface.co/fishaudio/drama-3) und wird über [SGLang-Omni](https://github.com/sgl-project/sglang-omni) ausgeführt.
 
 ## Funktionen
 
-- DOCX und TXT annehmen, mehrere Dateien nacheinander abarbeiten
+- Text direkt eingeben oder DOCX und TXT hochladen, mehrere Dateien nacheinander abarbeiten
 - Text in Abschnitte teilen und parallel synthetisieren
 - Stille und Endlosschleifen je Abschnitt erkennen, neu erzeugen und unsichere Stellen anzeigen
 - Nach Abbruch oder Neustart beim letzten fertigen Abschnitt weitermachen
@@ -59,7 +59,9 @@ Liegt das Modell woanders, trägst du den Pfad in `config.toml` unter `model` ei
 
 ## Bedienung
 
-Auf der Seite ein Dokument wählen, der Auftrag startet sofort. Beim ersten Auftrag lädt das Sprachmodell einige Minuten, nach 10 Minuten Leerlauf wird es wieder beendet. Sind weniger als 85 GB VRAM frei, wartet der Auftrag, bis die GPU frei ist.
+Mit dem Schalter oben wählst du die Eingabe: **Text** zum Eintippen oder Einfügen, **Dokument** für DOCX- oder TXT-Dateien. Dokumente lassen sich auch auf die Seite ziehen, mehrere auf einmal. Der Auftrag startet erst mit **Audio erstellen**, im Textfeld auch mit Strg+Enter. Bei eingegebenem Text wird die erste Zeile zum Titel der MP3.
+
+Beim ersten Auftrag lädt das Sprachmodell einige Minuten, nach 10 Minuten Leerlauf wird es wieder beendet. Sind weniger als 85 GB VRAM frei, wartet der Auftrag, bis die GPU frei ist.
 
 Fertige MP3s lassen sich direkt abspielen und herunterladen. Sie bleiben 30 Tage gespeichert.
 

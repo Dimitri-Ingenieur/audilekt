@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tts_webui.py: DOCX/TXT hochladen, MP3 bekommen. Start in der Conda-Umgebung: python tts_webui.py
+tts_webui.py: Text eingeben oder DOCX/TXT hochladen, MP3 bekommen. Start in der Conda-Umgebung: python tts_webui.py
 Startet Fish Audio Drama 3 (SGLang-Omni) bei Bedarf selbst, Merge und Encoding über ffmpeg.
 
 Einstellungen stehen in config.toml, jede lässt sich per TTS_*-Umgebungsvariable überschreiben.
@@ -237,7 +237,12 @@ def txt_paragraphs(path):
                    and sum(len(l) >= 0.7 * longest for l in lines) / len(lines) > 0.6)
         if not wrapped:
             return [(l, "p") for l in lines]
-    return [(b.replace("\n", " "), "p") for b in blocks]
+    paragraphs = [(b.replace("\n", " "), "p") for b in blocks]
+    # Eine deutlich kürzere erste Zeile ist eine Überschrift, kein umbrochener Satzanfang.
+    first = [l for l in blocks[0].split("\n") if l.strip()] if blocks else []
+    if len(first) > 1 and len(first[0].strip()) < 0.6 * max(len(l) for l in first[1:]):
+        paragraphs[:1] = [(first[0], "h"), (" ".join(first[1:]), "p")]
+    return paragraphs
 
 
 _CHAR_MAP = str.maketrans({"\ufb00": "ff", "\ufb01": "fi", "\ufb02": "fl", "\ufb03": "ffi", "\ufb04": "ffl",
@@ -337,6 +342,19 @@ def parse_document(path):
     return make_chunks(cleaned)
 
 
+def text_name(text, limit=60):
+    """Name für eingegebenen Text: die erste lesbare Zeile, zu lang an einer Wortgrenze gekürzt.
+    Leer, wenn im Text nichts Vorlesbares steht."""
+    lines = (clean(match.group()) for match in re.finditer(r"[^\r\n]+", text))
+    line = next((l for l in lines if re.search(r"\w", l)), "")
+    if len(line) <= limit:
+        return line
+    space = line.rfind(" ", 0, limit + 1)
+    if space > limit // 2:
+        return line[:space].rstrip(" ,;:.–—-") + " …"
+    return line[:limit] + "…"
+
+
 # ---------------------------------------------------------------- Audio
 _TRIM = "silenceremove=start_periods=1:start_threshold=-50dB:start_silence={}"
 _CHUNK_FILTER = ",".join((_TRIM.format("0.02"), "areverse", _TRIM.format("0.08"), "areverse", "volumedetect"))
@@ -395,7 +413,7 @@ def encode_mp3(job, chunks):
     if LOUDNORM:
         command += ["-af", "loudnorm=I=-18:TP=-1.5:LRA=11"]
     command += ["-ac", "1", "-ar", str(SAMPLE_RATE), "-c:a", "libmp3lame", "-b:a", MP3_BITRATE,
-                "-id3v2_version", "3", "-metadata", f"title={Path(job.name).stem}",
+                "-id3v2_version", "3", "-metadata", f"title={job.title}",
                 "-f", "mp3", "output.part"]
     result = subprocess.run(command, cwd=job.dir, capture_output=True)
     if result.returncode != 0:
@@ -614,9 +632,15 @@ class Job:
         return JOBS_DIR / self.id
 
     @property
+    def title(self):
+        """Name ohne Endung des hochgeladenen Dokuments, für MP3-Tag und Dateiname.
+        Nicht Path.stem: Aus dem Namen eines Textes wie "Kapitel 1. Anfang" würde sonst "Kapitel 1"."""
+        return re.sub(r"(?i)\.(?:docx|txt)$", "", self.name)
+
+    @property
     def mp3_name(self):
-        stem = re.sub(r'[\x00-\x1f/\\:*?"<>|]+', " ", Path(self.name).stem).strip() or "audio"
-        return f"{stem}.mp3"
+        stem = " ".join(re.sub(r'[\x00-\x1f/\\:*?"<>|]+', " ", self.title).split()).rstrip(". ")
+        return f"{stem or 'audio'}.mp3"
 
     def save(self):
         if not self.dir.exists():
@@ -864,6 +888,7 @@ def load_jobs():
 # ---------------------------------------------------------------- Web
 app = Flask(__name__, template_folder=str(BASE / "templates"))
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
+app.config["MAX_FORM_MEMORY_SIZE"] = MAX_UPLOAD_MB * 1024 * 1024   # eingegebener Text, Flask erlaubt sonst 500 kB
 app.config["TEMPLATES_AUTO_RELOAD"] = True               # Änderungen am Template ohne Neustart
 
 
@@ -873,7 +898,7 @@ def _problem(message, code):
 
 @app.errorhandler(413)
 def _too_large(_):
-    return _problem(f"Die Datei ist größer als {MAX_UPLOAD_MB} MB.", 413)
+    return _problem(f"Die Datei oder der Text ist größer als {MAX_UPLOAD_MB} MB.", 413)
 
 
 @app.get("/")
@@ -892,13 +917,21 @@ def state():
 
 @app.post("/api/jobs")
 def create_job():
+    """Neuer Auftrag aus einer hochgeladenen Datei (Feld file) oder aus eingegebenem Text (Feld text)."""
     upload = request.files.get("file")
-    if upload is None or not upload.filename:
-        return _problem("Es kam keine Datei an.", 400)
-    name = Path(upload.filename.replace("\\", "/")).name
-    extension = Path(name).suffix.lower()
-    if extension not in (".docx", ".txt"):
-        return _problem(f"{name}: Nur .docx und .txt lassen sich vorlesen.", 415)
+    text = request.form.get("text", "")
+    if upload is not None and upload.filename:
+        name = Path(upload.filename.replace("\\", "/")).name
+        extension = Path(name).suffix.lower()
+        if extension not in (".docx", ".txt"):
+            return _problem(f"{name}: Nur .docx und .txt lassen sich vorlesen.", 415)
+    elif text.strip():
+        name = text_name(text)
+        if not name:
+            return _problem("Im Text steht nichts, was sich vorlesen lässt.", 400)
+        upload, extension = None, ".txt"
+    else:
+        return _problem("Es kam weder ein Text noch eine Datei an.", 400)
     voices = list_voices()
     if not voices:
         return _problem("Keine Stimme vorhanden. Lege name.wav und name.txt in voices/ ab.", 409)
@@ -908,7 +941,10 @@ def create_job():
     job = Job(id=f"{int(time.time() * 1000):x}-{secrets.token_hex(3)}", name=name,
               source=f"source{extension}", voice=voice, created=time.time())
     job.dir.mkdir(parents=True)
-    upload.save(job.dir / job.source)
+    if upload is None:
+        (job.dir / job.source).write_text(text, encoding="utf-8")
+    else:
+        upload.save(job.dir / job.source)
     job.save()
     JOBS[job.id] = job
     QUEUE.put(job)

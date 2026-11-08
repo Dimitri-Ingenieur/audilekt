@@ -27,15 +27,33 @@ main{display:grid;grid-template-columns:minmax(0,1fr);grid-template-areas:"head"
   padding:max(1.5rem,env(safe-area-inset-top)) max(1.25rem,env(safe-area-inset-right)) max(2rem,env(safe-area-inset-bottom)) max(1.25rem,env(safe-area-inset-left))}
 h1{grid-area:head;margin:0 0 1.25rem;font:700 clamp(4rem,21vw,7rem)/.84 var(--cond);letter-spacing:-.012em;text-wrap:balance}
 #add{grid-area:add}
+#box{min-width:0;margin:0;padding:0;border:0}
 #voiceRow{display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem}
 select{flex:1;min-height:3rem;padding:0 .75rem;font:inherit;color:inherit;background:transparent;border:2px solid var(--ink);border-radius:3px}
+#mode{display:flex;margin-bottom:.75rem;border:2px solid var(--ink);border-radius:3px}
+#mode label{flex:1 1 0;display:flex;min-width:0}
+#mode input{position:absolute;width:1px;height:1px;margin:0;opacity:0}
+#mode span{flex:1;display:flex;align-items:center;justify-content:center;min-height:2.75rem;padding:.25rem .5rem;font-weight:600;line-height:1.2;text-align:center;cursor:pointer}
+#mode input:checked+span{background:var(--ink);color:var(--field)}
+textarea{display:block;width:100%;height:13rem;min-height:7rem;margin:0;padding:.6rem .75rem;font:inherit;color:inherit;background:transparent;border:2px solid var(--ink);border-radius:3px;resize:vertical}
+textarea::placeholder{color:inherit;opacity:.65}
+#drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.4rem;min-height:13rem;padding:1rem;border:2px dashed var(--ink);border-radius:3px;text-align:center}
+#drop.over{background:var(--wait);border-style:solid}
 #file{position:absolute;width:1px;height:1px;opacity:0}
-#pick{display:flex;align-items:center;justify-content:center;min-height:5rem;padding:.75rem 1rem;background:var(--slab);color:var(--on-slab);font:700 2.1rem/1 var(--cond);border-radius:3px;cursor:pointer;text-align:center}
-#file:focus-visible+#pick,button:focus-visible,a:focus-visible,summary:focus-visible,select:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
-#pick.over{outline:4px dashed var(--ink);outline-offset:4px}
-#file:disabled+#pick{opacity:.7;cursor:progress}
+#pick{display:inline-flex;align-items:center;min-height:2.75rem;padding:0 1.1rem;border:2px solid var(--ink);border-radius:3px;font-weight:600;cursor:pointer}
+#pick:hover{background:var(--wait)}
+#chosen{align-self:stretch;margin:.4rem 0 0;padding:0;list-style:none;text-align:left}
+#chosen li{display:flex;align-items:center;gap:.5rem;border-top:1px solid var(--now)}
+#chosen span{flex:1;min-width:0;overflow-wrap:anywhere}
+#chosen button{flex:none;width:2.75rem;height:2.75rem;padding:0;background:none;border:0;color:inherit;font:400 1.6rem/1 var(--text);cursor:pointer}
+#go{display:flex;align-items:center;justify-content:center;width:100%;min-height:5rem;margin-top:.75rem;padding:.75rem 1rem;background:var(--slab);color:var(--on-slab);font:700 2.1rem/1 var(--cond);border:0;border-radius:3px;cursor:pointer}
+#go:disabled{opacity:.4;cursor:default}
+#go[aria-busy=true]{opacity:.75;cursor:progress}
+#box:disabled :is(#voiceRow,#mode,textarea,#drop){opacity:.6}
+#file:focus-visible+#pick,button:focus-visible,a:focus-visible,summary:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
+#mode:has(:focus-visible){outline:3px solid var(--ink);outline-offset:3px}
 #hint{margin:.6rem 0 0}
-#err{margin:.6rem 0 0;font-weight:600;color:var(--alarm)}
+#err{margin:.6rem 0 0;font-weight:600;color:var(--alarm);white-space:pre-line}
 #jobs{grid-area:jobs;margin-top:2.25rem}
 #empty{margin:0}
 .job{padding-bottom:2.25rem}
@@ -55,6 +73,8 @@ details li{margin-bottom:.5rem;overflow-wrap:anywhere}
 @media (min-width:62rem){
   main{max-width:74rem;column-gap:5rem;grid-template-columns:minmax(20rem,26rem) minmax(0,1fr);grid-template-rows:auto auto 1fr;grid-template-areas:"head jobs" "add jobs" "gpu jobs";padding-top:3rem}
   h1{font-size:6rem}
+  textarea{height:17rem}
+  #drop{min-height:17rem}
   #jobs{margin-top:.5rem}
   #gpu{margin-top:1.5rem}
 }
@@ -63,23 +83,37 @@ details li{margin-bottom:.5rem;overflow-wrap:anywhere}
 <body>
 <main>
   <h1>{{ title }}</h1>
-  <section id="add">
-    <label id="voiceRow" hidden>Stimme <select id="voice"></select></label>
-    <input id="file" type="file" multiple accept=".docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-    <label id="pick" for="file">Dokument wählen</label>
-    <p id="hint">DOCX oder TXT bis {{ max_upload_mb }} MB. Fertige MP3s bleiben {{ keep_days }} Tage.</p>
+  <form id="add">
+    <fieldset id="box">
+      <label id="voiceRow" hidden>Stimme <select id="voice"></select></label>
+      <div id="mode" role="radiogroup" aria-label="Eingabe">
+        <label><input type="radio" name="mode" value="text" checked><span>Text</span></label>
+        <label><input type="radio" name="mode" value="file"><span>Dokument</span></label>
+      </div>
+      <textarea id="text" data-mode="text" aria-label="Text" placeholder="Text hier eingeben oder einfügen …"></textarea>
+      <div id="drop" data-mode="file" hidden>
+        <input id="file" type="file" multiple accept=".docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+        <label id="pick" for="file">Dokument wählen</label>
+        <span>oder hierher ziehen</span>
+        <ul id="chosen" aria-label="Gewählte Dokumente" hidden></ul>
+      </div>
+      <button id="go" type="submit" aria-keyshortcuts="Control+Enter Meta+Enter">Audio erstellen</button>
+    </fieldset>
+    <p id="hint"><span data-mode="text">Die erste Zeile wird zum Titel der MP3.</span><span data-mode="file" hidden>DOCX oder TXT bis {{ max_upload_mb }} MB.</span> Fertige MP3s bleiben {{ keep_days }} Tage.</p>
     <p id="err" role="alert" hidden></p>
-  </section>
+  </form>
   <section id="jobs" aria-label="Aufträge">
-    <p id="empty" hidden>Noch keine Aufträge. Wähle ein Dokument, dann erscheint es hier.</p>
+    <p id="empty" hidden>Noch keine Aufträge. Sobald du ein Audio erstellst, erscheint es hier.</p>
     <div id="list"></div>
   </section>
   <p id="gpu"></p>
 </main>
 <script>
 const $=s=>document.querySelector(s), ACTIVE=new Set(['queued','preparing','waiting_gpu','starting','running','encoding']);
-const items=new Map(), list=$('#list'), fileInput=$('#file'), pick=$('#pick'), err=$('#err');
-let timer, anyActive=false;
+const items=new Map(), list=$('#list'), err=$('#err');
+const form=$('#add'), box=$('#box'), textInput=$('#text'), fileInput=$('#file'), drop=$('#drop'), chosenList=$('#chosen'), go=$('#go');
+const MAX_BYTES={{ max_upload_mb }}*1048576;
+let timer, anyActive=false, mode='text', chosen=[], sending=false;
 
 const num=(v,d=1)=>v.toFixed(d).replace('.',',');
 function span(s){s=Math.max(1,Math.round(s));if(s<60)return s+' Sek.';
@@ -160,18 +194,67 @@ function schedule(){clearTimeout(timer);timer=setTimeout(async()=>{await refresh
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();schedule()}});
 addEventListener('resize',()=>{for(const e of items.values())if(e.job&&e.job.states)stripes(e.cv,e.job)});
 
-async function send(files){
-  if(!files.length)return;complain('');fileInput.disabled=true;const label=pick.textContent;pick.textContent='Wird hochgeladen …';
-  for(const f of files){const fd=new FormData();fd.append('file',f);if($('#voice').value)fd.append('voice',$('#voice').value);
-    try{const r=await fetch('/api/jobs',{method:'POST',body:fd});
-      if(!r.ok){const b=await r.json().catch(()=>({}));complain(b.error||`Upload von ${f.name} fehlgeschlagen.`)}}
-    catch{complain(`Upload von ${f.name} fehlgeschlagen. Ist der Server erreichbar?`)}
+// Eingabe: Text oder Dokumente. Erst „Audio erstellen“ legt die Aufträge an.
+function ready(){go.disabled=mode==='text'?!textInput.value.trim():!chosen.length}
+function setMode(m){
+  mode=m;form.elements.namedItem('mode').value=m;
+  for(const el of document.querySelectorAll('[data-mode]'))el.hidden=el.dataset.mode!==m;
+  try{localStorage.setItem('audilekt.mode',m)}catch{}
+  ready()}
+function showChosen(){
+  chosenList.replaceChildren(...chosen.map(f=>{
+    const li=document.createElement('li'),name=document.createElement('span'),x=document.createElement('button');
+    name.textContent=f.name;x.type='button';x.textContent='×';x.title='Entfernen';x.setAttribute('aria-label',`${f.name} entfernen`);
+    x.onclick=()=>{chosen=chosen.filter(c=>c!==f);showChosen()};
+    li.append(name,x);return li}));
+  chosenList.hidden=!chosen.length;ready()}
+function choose(files){
+  const problems=[];
+  for(const f of files){
+    if(!/\.(docx|txt)$/i.test(f.name))problems.push(`${f.name}: Nur .docx und .txt lassen sich vorlesen.`);
+    else if(f.size>MAX_BYTES)problems.push(`${f.name} ist größer als {{ max_upload_mb }} MB.`);
+    else if(!chosen.some(c=>c.name===f.name&&c.size===f.size&&c.lastModified===f.lastModified))chosen.push(f)}
+  complain(problems.join('\n'));showChosen()}
+async function post(fields,failed){
+  const fd=new FormData();for(const[k,v]of Object.entries(fields))fd.append(k,v);
+  if($('#voice').value)fd.append('voice',$('#voice').value);
+  try{const r=await fetch('/api/jobs',{method:'POST',body:fd});if(r.ok)return'';
+    const b=await r.json().catch(()=>({}));return b.error||failed}
+  catch{return`${failed} Ist der Server erreichbar?`}}
+form.addEventListener('submit',async e=>{
+  e.preventDefault();if(sending||go.disabled)return;
+  const label=go.textContent,problems=[];
+  sending=true;complain('');box.disabled=true;go.setAttribute('aria-busy','true');
+  if(mode==='text'){go.textContent='Wird gesendet …';
+    const p=await post({text:textInput.value},'Der Text ließ sich nicht senden.');
+    if(p)problems.push(p);else textInput.value='';
     await refresh()}
-  fileInput.disabled=false;fileInput.value='';pick.textContent=label;schedule()}
-fileInput.addEventListener('change',()=>send([...fileInput.files]));
-for(const ev of['dragenter','dragover'])addEventListener(ev,e=>{e.preventDefault();pick.classList.add('over')});
-for(const ev of['dragleave','drop'])addEventListener(ev,e=>{e.preventDefault();if(ev==='drop'||!e.relatedTarget)pick.classList.remove('over')});
-addEventListener('drop',e=>send([...e.dataTransfer.files]));
+  else{go.textContent='Wird hochgeladen …';
+    for(const f of[...chosen]){const p=await post({file:f},`Upload von ${f.name} fehlgeschlagen.`);
+      if(p)problems.push(p);else chosen=chosen.filter(c=>c!==f);
+      showChosen();await refresh()}}
+  go.textContent=label;go.removeAttribute('aria-busy');box.disabled=false;sending=false;
+  complain(problems.join('\n'));ready();schedule()});
+for(const r of form.elements.namedItem('mode'))r.addEventListener('change',()=>{complain('');setMode(r.value)});
+textInput.addEventListener('input',ready);
+form.addEventListener('keydown',e=>{if(e.key!=='Enter')return;   // Strg+Enter erstellt, Enter am Umschalter nicht
+  if(e.ctrlKey||e.metaKey){e.preventDefault();go.click()}else if(e.target.type==='radio')e.preventDefault()});
+fileInput.addEventListener('change',()=>{choose([...fileInput.files]);fileInput.value=''});
+addEventListener('pageshow',ready);
+
+// Dateien lassen sich auf die ganze Seite ziehen: Beim Ziehen zeigt die Seite das Dokumentfeld,
+// ohne Ablegen kehrt sie zur vorigen Eingabe zurück.
+const carriesFiles=e=>!!e.dataTransfer&&[...e.dataTransfer.types].includes('Files');
+let depth=0,before=null;
+function endDrag(restore){depth=0;drop.classList.remove('over');if(restore&&before)setMode(before);before=null}
+addEventListener('dragenter',e=>{if(!carriesFiles(e))return;e.preventDefault();
+  if(depth++===0&&!sending){if(mode!=='file'){before=mode;setMode('file')}drop.classList.add('over')}});
+addEventListener('dragover',e=>{if(carriesFiles(e)){e.preventDefault();e.dataTransfer.dropEffect=sending?'none':'copy'}});
+addEventListener('dragleave',e=>{if(carriesFiles(e)&&--depth<=0)endDrag(true)});
+addEventListener('drop',e=>{if(!carriesFiles(e))return;e.preventDefault();endDrag(false);if(!sending)choose([...e.dataTransfer.files])});
+
+let saved;try{saved=localStorage.getItem('audilekt.mode')}catch{}
+box.disabled=false;setMode(saved==='file'?'file':'text');
 refresh().then(schedule);
 </script>
 </body>
