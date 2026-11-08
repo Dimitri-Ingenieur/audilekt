@@ -555,7 +555,7 @@ class Backend:
         finally:
             self.starting = False
 
-    def stop(self):
+    def stop(self, grace=30):
         with self.lock:
             proc, self.proc = self.proc, None
             if proc is None:
@@ -566,7 +566,7 @@ class Backend:
             except ProcessLookupError:
                 proc.poll()
                 return
-            deadline = time.time() + 30
+            deadline = time.time() + grace
             while time.time() < deadline:
                 proc.poll()
                 try:
@@ -967,7 +967,18 @@ def download(job_id):
                      download_name=job.mp3_name, conditional=True, max_age=0)
 
 
+def shutdown(*_):
+    """Strg+C und SIGTERM: Backend beenden und ohne Traceback raus. Offene Aufträge laufen beim nächsten Start weiter."""
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    print(f"\n{TITLE} wird beendet.", flush=True)
+    backend.stop(grace=10)
+    os._exit(0)
+
+
 def main():
+    signal.signal(signal.SIGINT, shutdown)
+    signal.signal(signal.SIGTERM, shutdown)
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     VOICES.mkdir(parents=True, exist_ok=True)
     ensure_default_voice()
@@ -975,7 +986,6 @@ def main():
     threading.Thread(target=worker, daemon=True).start()
     threading.Thread(target=housekeeping, daemon=True).start()
     atexit.register(backend.stop)
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     print(f"{TITLE}: http://{HOST}:{PORT}  Modell: {MODEL_PATH}", flush=True)
     try:
         from waitress import serve
